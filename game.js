@@ -26,7 +26,7 @@
   const keys = new Set();
 
   const game = {
-    scene: "opening",
+    scene: "title",
     quest: "intro",
     unity: 4,
     level: 0,
@@ -613,6 +613,7 @@
   }
 
   function startOpening() {
+    game.scene = "opening";
     setObjective("Opening Cutscene", "Watch the story unfold.");
     showDialogue(
       [
@@ -627,19 +628,75 @@
     );
   }
 
+  function startTitle() {
+    game.scene = "title";
+    setObjective("Title Screen", "Click to begin.");
+  }
+
   function showAvatarSelection() {
     openOverlay(`
       <div class="overlay-center">
         <h2>Choose Your Avatar</h2>
         <p>Cosmetic choice. All avatars play the same.</p>
         <div class="overlay-list" id="avatar-list">
-          <button data-avatar="builder">Builder</button>
-          <button data-avatar="student">Student</button>
-          <button data-avatar="artist">Artist</button>
-          <button data-avatar="engineer">Engineer</button>
+          <button data-avatar="builder"><canvas class="avatar-face" data-avatar-face="builder" width="24" height="24"></canvas><canvas class="job-icon" data-job-icon="builder" width="24" height="24"></canvas><span>Builder</span></button>
+          <button data-avatar="student"><canvas class="avatar-face" data-avatar-face="student" width="24" height="24"></canvas><canvas class="job-icon" data-job-icon="student" width="24" height="24"></canvas><span>Student</span></button>
+          <button data-avatar="artist"><canvas class="avatar-face" data-avatar-face="artist" width="24" height="24"></canvas><canvas class="job-icon" data-job-icon="artist" width="24" height="24"></canvas><span>Artist</span></button>
+          <button data-avatar="engineer"><canvas class="avatar-face" data-avatar-face="engineer" width="24" height="24"></canvas><canvas class="job-icon" data-job-icon="engineer" width="24" height="24"></canvas><span>Engineer</span></button>
         </div>
       </div>
     `);
+
+    function drawJobIcon(canvas, role) {
+      const c = canvas.getContext("2d");
+      c.clearRect(0, 0, 24, 24);
+      c.fillStyle = "#0f172a";
+      c.fillRect(0, 0, 24, 24);
+      c.fillStyle = "#dbeafe";
+      c.fillRect(1, 1, 22, 22);
+      c.fillStyle = "#1f2937";
+      c.fillRect(2, 2, 20, 20);
+
+      if (role === "builder") {
+        c.fillStyle = "#f59e0b";
+        c.fillRect(5, 14, 14, 4);
+        c.fillRect(12, 6, 3, 8);
+      } else if (role === "student") {
+        c.fillStyle = "#60a5fa";
+        c.fillRect(5, 6, 14, 12);
+        c.fillStyle = "#e2e8f0";
+        c.fillRect(7, 8, 10, 1);
+        c.fillRect(7, 11, 10, 1);
+        c.fillRect(7, 14, 7, 1);
+      } else if (role === "artist") {
+        c.fillStyle = "#fbbf24";
+        c.fillRect(5, 8, 14, 10);
+        c.fillStyle = "#ef4444";
+        c.fillRect(7, 10, 2, 2);
+        c.fillStyle = "#22c55e";
+        c.fillRect(10, 12, 2, 2);
+        c.fillStyle = "#3b82f6";
+        c.fillRect(13, 9, 2, 2);
+        c.fillStyle = "#a78bfa";
+        c.fillRect(16, 13, 2, 2);
+      } else if (role === "engineer") {
+        c.fillStyle = "#94a3b8";
+        c.fillRect(6, 9, 12, 6);
+        c.fillRect(9, 6, 6, 12);
+        c.fillStyle = "#0f172a";
+        c.fillRect(10, 10, 4, 4);
+      }
+    }
+
+    document.querySelectorAll("canvas[data-avatar-face]").forEach((face) => {
+      const avatar = face.dataset.avatarFace;
+      const fctx = face.getContext("2d");
+      const sp = getSprite(avatar);
+      fctx.drawImage(sp, 0, 0, 24, 24);
+    });
+    document.querySelectorAll("canvas[data-job-icon]").forEach((icon) => {
+      drawJobIcon(icon, icon.dataset.jobIcon);
+    });
 
     document.querySelectorAll("#avatar-list button").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -2224,14 +2281,38 @@
 
   function drawOpeningBackground() {
     const t = performance.now() * 0.001;
-    const darkness = 0.35 + Math.sin(t * 0.8) * 0.08;
-    ctx.fillStyle = `rgba(0, 0, 0, ${darkness})`;
+    ctx.fillStyle = "#10263a";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = "#8eb8cc";
-    ctx.font = "18px 'Press Start 2P'";
-    ctx.fillText("BIT-BY-BIT", canvas.width / 2 - 130, canvas.height / 2 - 30);
-    ctx.font = "10px 'Press Start 2P'";
-    ctx.fillText("A 16-bit community builder", canvas.width / 2 - 160, canvas.height / 2 + 6);
+    for (let y = 0; y < canvas.height; y += 16) {
+      ctx.fillStyle = y % 32 === 0 ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.1)";
+      ctx.fillRect(0, y, canvas.width, 1);
+    }
+
+    ctx.fillStyle = "#183149";
+    ctx.fillRect(0, 320, canvas.width, 220);
+    ctx.fillStyle = "#2a5d3a";
+    ctx.fillRect(0, 430, canvas.width, 110);
+
+    const pulse = 0.6 + Math.sin(t * 2.2) * 0.2;
+    ctx.fillStyle = `rgba(145, 220, 255, ${pulse})`;
+    ctx.font = "54px 'Press Start 2P'";
+    ctx.fillText("BIT-BY-BIT", canvas.width / 2 - 285, 215);
+    ctx.fillStyle = "#d7ecff";
+    ctx.font = "14px 'Press Start 2P'";
+    ctx.fillText("A 16-bit community builder", canvas.width / 2 - 220, 255);
+  }
+
+  function drawTitlePrompt() {
+    const blink = Math.sin(performance.now() * 0.005) > -0.1;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.52)";
+    ctx.fillRect(canvas.width / 2 - 220, 292, 440, 72);
+    ctx.strokeStyle = "#8be9ff";
+    ctx.strokeRect(canvas.width / 2 - 220, 292, 440, 72);
+    if (blink) {
+      ctx.fillStyle = "#f4faff";
+      ctx.font = "12px 'Press Start 2P'";
+      ctx.fillText("CLICK TO START", canvas.width / 2 - 126, 336);
+    }
   }
 
   function drawEndingEffects(dt) {
@@ -2298,7 +2379,12 @@
   function render(dt) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (game.scene === "mayor_house") {
+    if (game.scene === "title") {
+      drawOpeningBackground();
+      drawTitlePrompt();
+    } else if (game.scene === "opening") {
+      drawOpeningBackground();
+    } else if (game.scene === "mayor_house") {
       drawMayorHouseInterior();
     } else if (game.scene === "school_interior") {
       drawSchoolInterior();
@@ -2308,10 +2394,6 @@
       drawWorld();
       drawPlayer();
       drawObjectiveArrow();
-    }
-
-    if (game.scene === "opening") {
-      drawOpeningBackground();
     }
 
     if (game.scene === "ending") {
@@ -2412,6 +2494,11 @@
     if (game.musicOn && !game.musicClock) startMusic();
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
     keys.add(key);
+    if (game.scene === "title" && (key === " " || key === "Enter")) {
+      e.preventDefault();
+      startOpening();
+      return;
+    }
     if (key === " " || key === "Enter") {
       e.preventDefault();
       if (ui.dialogue && !ui.dialogue.classList.contains("hidden")) {
@@ -2432,10 +2519,17 @@
       toggleMusic();
     });
   }
+  canvas.addEventListener("click", () => {
+    if (game.scene === "title") {
+      if (!game.audio) ensureAudioContext();
+      if (game.musicOn && !game.musicClock) startMusic();
+      startOpening();
+    }
+  });
   updateMusicButton();
 
   setUnity(game.unity);
-  startOpening();
+  startTitle();
 
   let last = performance.now();
   function loop(now) {
