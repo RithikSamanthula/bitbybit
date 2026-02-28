@@ -188,6 +188,19 @@ body {
 
 .overlay-list button {
   flex: 1 1 130px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+}
+
+.overlay-list .avatar-face,
+.overlay-list .job-icon {
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: #0b1118;
 }
 
 .minigame-grid {
