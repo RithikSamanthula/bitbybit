@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bit-by-Bit: Unity Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="game-shell">
+    <canvas id="game" width="960" height="540" aria-label="Bit-by-Bit game canvas"></canvas>
+
+    <div id="hud">
+      <div id="hud-left">
+        <div class="label">UNITY</div>
+        <div id="unity-meter"><div id="unity-fill"></div></div>
+      </div>
+      <div id="hud-right">
+        <div id="level-label">Opening</div>
+        <div id="task-label">Watch the intro.</div>
+        <button id="music-toggle" type="button">Music: Off</button>
+      </div>
+    </div>
+
+    <div id="dialogue" class="panel hidden">
+      <h3 id="dialogue-name"></h3>
+      <p id="dialogue-text"></p>
+      <button id="dialogue-next">Next</button>
+    </div>
+
+    <div id="choice" class="panel hidden">
+      <h3 id="choice-title">Choice</h3>
+      <p id="choice-text"></p>
+      <div class="choice-buttons">
+        <button id="choice-yes">Yes</button>
+        <button id="choice-no">No</button>
+      </div>
+    </div>
+
+    <div id="overlay" class="panel hidden"></div>
+    <div id="tip">Move: WASD/Arrows • Interact: Space/Enter</div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
