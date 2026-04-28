@@ -16,7 +16,9 @@
     choiceYes: document.getElementById("choice-yes"),
     choiceNo: document.getElementById("choice-no"),
     overlay: document.getElementById("overlay"),
-    musicToggle: document.getElementById("music-toggle")
+    musicToggle: document.getElementById("music-toggle"),
+    volumeRange: document.getElementById("volume-range"),
+    toast: document.getElementById("toast")
   };
 
   const TILE = 32;
@@ -40,9 +42,18 @@
     minigameCleanup: null,
     camera: { x: 0, y: 0 },
     audio: null,
+    audioGain: null,
+    noiseBuffer: null,
+    effects: [],
     musicOn: true,
     musicClock: null,
     musicStep: 0,
+    walkTime: 0,
+    footstepTimer: 0,
+    toastTimeout: null,
+    screenShake: 0,
+    volume: 0.72,
+    tokensCollected: 0,
     worldReturn: { x: 16 * TILE, y: 18 * TILE }
   };
 
@@ -124,6 +135,51 @@
 
   const spriteCache = {};
 
+  const PALETTE = {
+    a: "#111827",
+    b: "#f9d8a7",
+    c: "#4ade80",
+    d: "#60a5fa",
+    e: "#ef4444",
+    f: "#fbbf24",
+    g: "#a78bfa",
+    h: "#94a3b8",
+    i: "#27272a",
+    j: "#f8fafc",
+    k: "#22d3ee",
+    l: "#86efac"
+  };
+
+  const motionFrames = {
+    down: [
+      [{ x: 6, y: 10, color: "rgba(17,24,39,0.8)" }, { x: 9, y: 10, color: "rgba(17,24,39,0.8)" }],
+      [{ x: 5, y: 11, color: "#94a3b8" }, { x: 10, y: 11, color: "#94a3b8" }],
+      [{ x: 6, y: 12, color: "#f9d8a7" }, { x: 9, y: 12, color: "#f9d8a7" }]
+    ],
+    left: [
+      [{ x: 5, y: 8, color: "#f9d8a7" }, { x: 10, y: 9, color: "#94a3b8" }],
+      [{ x: 4, y: 9, color: "#111827" }, { x: 11, y: 10, color: "#f9d8a7" }],
+      [{ x: 5, y: 10, color: "#4ade80" }, { x: 10, y: 11, color: "#a78bfa" }]
+    ],
+    right: [
+      [{ x: 10, y: 8, color: "#f9d8a7" }, { x: 5, y: 9, color: "#94a3b8" }],
+      [{ x: 11, y: 9, color: "#111827" }, { x: 4, y: 10, color: "#f9d8a7" }],
+      [{ x: 10, y: 10, color: "#4ade80" }, { x: 5, y: 11, color: "#a78bfa" }]
+    ],
+    up: [
+      [{ x: 7, y: 4, color: "#f9d8a7" }, { x: 8, y: 4, color: "#f9d8a7" }],
+      [{ x: 7, y: 5, color: "#ffffff" }, { x: 8, y: 5, color: "#ffffff" }],
+      [{ x: 6, y: 4, color: "#60a5fa" }, { x: 9, y: 4, color: "#60a5fa" }]
+    ]
+  };
+
+  const collectibles = [
+    { x: 19 * TILE + 16, y: 24 * TILE + 16, label: "Unity Spark", color: "#ffea5f", collected: false },
+    { x: 13 * TILE + 12, y: 40 * TILE + 10, label: "Town Gem", color: "#7af7ff", collected: false },
+    { x: 52 * TILE + 18, y: 30 * TILE + 12, label: "Farm Seed", color: "#f59e0b", collected: false },
+    { x: 72 * TILE + 16, y: 14 * TILE + 14, label: "Arcade Token", color: "#f472b6", collected: false }
+  ];
+
   function makeSprite(palette, rows) {
     const c = document.createElement("canvas");
     c.width = 16;
@@ -143,21 +199,6 @@
 
   function getSprite(name) {
     if (spriteCache[name]) return spriteCache[name];
-
-    const commonPalette = {
-      a: "#111827",
-      b: "#f9d8a7",
-      c: "#4ade80",
-      d: "#60a5fa",
-      e: "#ef4444",
-      f: "#fbbf24",
-      g: "#a78bfa",
-      h: "#94a3b8",
-      i: "#27272a",
-      j: "#f8fafc",
-      k: "#22d3ee",
-      l: "#86efac"
-    };
 
     const designs = {
       builder: [
@@ -415,7 +456,7 @@
     };
 
     const rows = designs[name] || designs.builder;
-    const sprite = makeSprite(commonPalette, rows);
+    const sprite = makeSprite(PALETTE, rows);
     spriteCache[name] = sprite;
     return sprite;
   }
@@ -515,15 +556,39 @@
   function setObjective(levelLabel, taskLabel) {
     ui.levelLabel.textContent = levelLabel;
     ui.taskLabel.textContent = taskLabel;
+    if (levelLabel && taskLabel && game.scene !== "title") {
+      notify(`${levelLabel}: ${taskLabel}`);
+      triggerShake(5);
+    }
+  }
+
+  function notify(text) {
+    if (!ui.toast) return;
+    ui.toast.textContent = text;
+    ui.toast.classList.add("show");
+    clearTimeout(game.toastTimeout);
+    game.toastTimeout = setTimeout(() => {
+      ui.toast.classList.remove("show");
+    }, 2600);
+  }
+
+  function triggerShake(amount) {
+    game.screenShake = Math.max(game.screenShake, amount);
   }
 
   function setUnity(value) {
+    const prev = game.unity;
     game.unity = Math.max(0, Math.min(100, value));
     ui.unityFill.style.width = `${game.unity}%`;
     const stage = Math.floor(game.unity / 25);
     if (stage > game.growthStage) {
       game.growthStage = stage;
       game.flashTimer = 0.9;
+      spawnEffect(player.x, player.y - 18, { count: 12, color: "#ffe96a" });
+      playSfx("win");
+    }
+    if (game.unity > prev) {
+      spawnEffect(player.x, player.y - 18, { count: 6, color: "#7af7ff" });
     }
   }
 
@@ -540,6 +605,7 @@
   }
 
   function advanceDialogue() {
+    playSfx("select");
     if (!game.dialogueQueue.length) {
       ui.dialogue.classList.add("hidden");
       game.busy = false;
@@ -566,12 +632,14 @@
   }
 
   ui.choiceYes.addEventListener("click", () => {
+    playSfx("confirm");
     ui.choice.classList.add("hidden");
     game.busy = false;
     if (game.choiceDone) game.choiceDone(true);
   });
 
   ui.choiceNo.addEventListener("click", () => {
+    playSfx("error");
     ui.choice.classList.add("hidden");
     game.busy = false;
     if (game.choiceDone) game.choiceDone(false);
@@ -716,6 +784,17 @@
   function updateMusicButton() {
     if (!ui.musicToggle) return;
     ui.musicToggle.textContent = `Music: ${game.musicOn ? "On" : "Off"}`;
+    if (ui.volumeRange) {
+      ui.volumeRange.value = Math.round(game.volume * 100);
+    }
+  }
+
+  function setVolume(value) {
+    game.volume = Math.max(0, Math.min(1, value));
+    if (game.audioGain) {
+      game.audioGain.gain.setValueAtTime(game.volume, game.audio.currentTime);
+    }
+    if (ui.volumeRange) ui.volumeRange.value = Math.round(game.volume * 100);
   }
 
   function ensureAudioContext() {
@@ -723,37 +802,140 @@
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
     game.audio = new Ctx();
+    game.audioGain = game.audio.createGain();
+    game.audioGain.gain.setValueAtTime(game.volume, game.audio.currentTime);
+    game.audioGain.connect(game.audio.destination);
     return game.audio;
   }
 
-  function playChipNote(freq, duration = 0.14, type = "square", gain = 0.05) {
+  function playChipNote(freq, duration = 0.14, type = "square", gain = 0.05, delay = 0) {
     const audio = ensureAudioContext();
-    if (!audio) return;
+    if (!audio || !game.audioGain) return;
     const osc = audio.createOscillator();
     const amp = audio.createGain();
     osc.type = type;
     osc.frequency.value = freq;
-    amp.gain.setValueAtTime(0.001, audio.currentTime);
-    amp.gain.exponentialRampToValueAtTime(gain, audio.currentTime + 0.01);
+    amp.gain.setValueAtTime(0.001, audio.currentTime + delay);
+    amp.gain.exponentialRampToValueAtTime(gain, audio.currentTime + delay + 0.01);
+    amp.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + delay + duration);
+    osc.connect(amp).connect(game.audioGain);
+    osc.start(audio.currentTime + delay);
+    osc.stop(audio.currentTime + delay + duration + 0.02);
+  }
+
+  function createNoiseBuffer() {
+    const audio = ensureAudioContext();
+    if (!game.noiseBuffer && audio) {
+      const buffer = audio.createBuffer(1, audio.sampleRate * 1, audio.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      game.noiseBuffer = buffer;
+    }
+    return game.noiseBuffer;
+  }
+
+  function playNoise(duration = 0.08, gain = 0.05) {
+    const audio = ensureAudioContext();
+    if (!audio) return;
+    const buffer = createNoiseBuffer();
+    if (!buffer) return;
+    const source = audio.createBufferSource();
+    source.buffer = buffer;
+    const amp = audio.createGain();
+    amp.gain.setValueAtTime(gain, audio.currentTime);
     amp.gain.exponentialRampToValueAtTime(0.001, audio.currentTime + duration);
-    osc.connect(amp).connect(audio.destination);
-    osc.start();
-    osc.stop(audio.currentTime + duration + 0.015);
+    source.connect(amp).connect(game.audioGain);
+    source.start();
+    source.stop(audio.currentTime + duration + 0.02);
+  }
+
+  function playSfx(type) {
+    const audio = ensureAudioContext();
+    if (!audio) return;
+    if (audio.state === "suspended") audio.resume();
+    switch (type) {
+      case "select":
+        playChipNote(880, 0.08, "triangle", 0.06);
+        break;
+      case "confirm":
+        playChipNote(660, 0.12, "square", 0.05);
+        playChipNote(880, 0.1, "triangle", 0.03, 0.03);
+        break;
+      case "error":
+        playChipNote(220, 0.18, "sawtooth", 0.08);
+        playNoise(0.1, 0.04);
+        break;
+      case "spark":
+        playChipNote(1080, 0.06, "triangle", 0.04);
+        playNoise(0.06, 0.02);
+        break;
+      case "win":
+        playChipNote(740, 0.14, "triangle", 0.04);
+        playChipNote(988, 0.1, "square", 0.03, 0.04);
+        playNoise(0.08, 0.02);
+        break;
+      case "door":
+        playChipNote(660, 0.1, "sine", 0.04);
+        playChipNote(550, 0.08, "triangle", 0.03, 0.09);
+        break;
+      case "footstep":
+        playChipNote(300 + Math.random() * 80, 0.05, "square", 0.03);
+        break;
+      case "boost":
+        playChipNote(1040, 0.1, "square", 0.06);
+        playNoise(0.04, 0.03);
+        break;
+      case "hit":
+        playChipNote(280, 0.12, "sawtooth", 0.06);
+        playNoise(0.08, 0.03);
+        break;
+      case "pickup":
+        playChipNote(920, 0.08, "triangle", 0.05);
+        break;
+      default:
+        playChipNote(440, 0.08, "square", 0.04);
+    }
   }
 
   function startMusic() {
     const audio = ensureAudioContext();
     if (!audio || game.musicClock) return;
-    const lead = [392, 440, 523.25, 440, 392, 329.63, 392, 523.25, 659.25, 523.25, 440, 392];
-    const bass = [130.81, 130.81, 174.61, 174.61, 146.83, 146.83, 196, 196, 174.61, 174.61, 130.81, 130.81];
+    const themes = {
+      world: {
+        lead: [659.25, 587.33, 523.25, 587.33, 659.25, 698.46, 659.25, 587.33, 523.25, 587.33, 659.25, 523.25],
+        bass: [130.81, 130.81, 146.83, 146.83, 164.81, 164.81, 130.81, 130.81, 146.83, 146.83, 130.81, 130.81],
+        harmony: [392, 392, 349.23, 349.23, 330, 330, 294, 294, 330, 330, 294, 294],
+        drums: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0]
+      },
+      interior: {
+        lead: [523.25, 523.25, 587.33, 659.25, 587.33, 523.25, 440, 392, 440, 523.25, 587.33, 523.25],
+        bass: [98, 98, 110, 130.81, 110, 98, 82, 82, 98, 110, 130.81, 110],
+        harmony: [261.63, 261.63, 293.66, 329.63, 293.66, 261.63, 220, 196, 220, 261.63, 293.66, 261.63],
+        drums: [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0]
+      }
+    };
+
+    function getTheme() {
+      if (game.scene === "mayor_house" || game.scene === "school_interior" || game.scene === "arcade_interior") {
+        return themes.interior;
+      }
+      return themes.world;
+    }
+
     game.musicClock = setInterval(() => {
       if (!game.musicOn) return;
       if (audio.state === "suspended") audio.resume();
-      const i = game.musicStep % lead.length;
-      playChipNote(lead[i], 0.15, "square", 0.045);
-      if (i % 2 === 0) playChipNote(bass[i], 0.18, "triangle", 0.032);
+      const theme = getTheme();
+      const i = game.musicStep % theme.lead.length;
+      const leadGain = 0.045 + (i % 4 === 0 ? 0.01 : 0);
+      playChipNote(theme.lead[i], 0.16, "square", leadGain);
+      if (i % 2 === 0) playChipNote(theme.bass[i], 0.24, "triangle", 0.028);
+      if (i % 4 === 1) playChipNote(theme.harmony[i], 0.18, "sawtooth", 0.02);
+      if (theme.drums[i]) playNoise(0.06, 0.02);
       game.musicStep += 1;
-    }, 170);
+    }, 165);
   }
 
   function stopMusic() {
@@ -775,6 +957,44 @@
     }
   }
 
+  function spawnEffect(x, y, opts = {}) {
+    const count = opts.count || 10;
+    const color = opts.color || "#8efaf5";
+    for (let i = 0; i < count; i += 1) {
+      game.effects.push({
+        x,
+        y,
+        vx: (Math.random() - 0.5) * 120,
+        vy: (Math.random() - 0.5) * 120 - 20,
+        life: 0.5 + Math.random() * 0.4,
+        size: 2 + Math.random() * 2,
+        color,
+        alpha: 1
+      });
+    }
+  }
+
+  function updateEffects(dt) {
+    game.effects = game.effects.filter((effect) => {
+      effect.life -= dt;
+      if (effect.life <= 0) return false;
+      effect.x += effect.vx * dt;
+      effect.y += effect.vy * dt;
+      effect.vy += 180 * dt;
+      effect.alpha = effect.life / 0.7;
+      return true;
+    });
+  }
+
+  function drawEffects() {
+    for (const effect of game.effects) {
+      ctx.fillStyle = effect.color;
+      ctx.globalAlpha = effect.alpha;
+      ctx.fillRect(effect.x - game.camera.x, effect.y - game.camera.y, effect.size, effect.size);
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function distance(ax, ay, bx, by) {
     return Math.hypot(ax - bx, ay - by);
   }
@@ -794,6 +1014,7 @@
     game.scene = "mayor_house";
     player.x = mayorRoom.doorX;
     player.y = mayorRoom.doorY - 12;
+    playSfx("door");
     setObjective("Level 1: Mayor House", "Find and wake the mayor inside.");
   }
 
@@ -801,6 +1022,7 @@
     game.scene = "world";
     player.x = game.worldReturn.x;
     player.y = game.worldReturn.y;
+    playSfx("door");
     setObjective("Level 1: Town Hall", game.quest === "l1_find_mayor" ? "Enter the mayor house and wake the mayor." : "Win the mayor dash mini-game.");
   }
   function enterSchool() {
@@ -808,23 +1030,27 @@
     game.scene = "school_interior";
     player.x = schoolRoom.doorX;
     player.y = schoolRoom.doorY - 12;
+    playSfx("door");
   }
   function exitSchool() {
     game.scene = "world";
     player.x = game.worldReturn.x;
     player.y = game.worldReturn.y;
+    playSfx("door");
   }
   function enterArcade() {
     game.worldReturn = { x: player.x, y: player.y };
     game.scene = "arcade_interior";
     player.x = arcadeRoom.doorX;
     player.y = arcadeRoom.doorY - 12;
+    playSfx("door");
     setObjective("Level 4: Education", game.quest === "l4_talk_kid" ? "Find the Arcade Kid inside." : "Beat the learning challenge.");
   }
   function exitArcade() {
     game.scene = "world";
     player.x = game.worldReturn.x;
     player.y = game.worldReturn.y;
+    playSfx("door");
     if (game.quest === "l4_talk_kid" || game.quest === "l4_trivia") {
       setObjective("Level 4: Education", "Go to the arcade door and challenge the kids.");
     }
@@ -832,6 +1058,7 @@
 
   function interact() {
     if (game.busy) return;
+    playSfx("confirm");
 
     if (game.scene === "mayor_house") {
       const nearMayor = distance(player.x, player.y, mayorRoom.mayorX, mayorRoom.mayorY) < 56;
@@ -1359,6 +1586,8 @@
           hits += 1;
           c.y = 460;
           distance = Math.max(0, distance - 8);
+          playSfx("hit");
+          triggerShake(5);
           for (let i = 0; i < 12; i += 1) {
             sparks.push({
               x: px,
@@ -1374,6 +1603,8 @@
         if (Math.abs(b.y - py) < 24 && b.lane === lane) {
           boost = 2.15;
           b.y = 420;
+          playSfx("boost");
+          triggerShake(3);
         }
       }
       for (const s of starPickups) {
@@ -1381,6 +1612,7 @@
           stars += 1;
           distance += 2.8;
           s.y = 420;
+          playSfx("pickup");
         }
       }
 
@@ -1981,6 +2213,21 @@
     const camX = game.camera.x;
     const camY = game.camera.y;
 
+    const sky = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    sky.addColorStop(0, "#162c4b");
+    sky.addColorStop(0.35, "#213f68");
+    sky.addColorStop(1, "#12212f");
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    for (let i = 0; i < 4; i += 1) {
+      const offset = (performance.now() * 0.02 + i * 160) % (canvas.width + 260) - 260;
+      ctx.fillStyle = `rgba(255,255,255,${0.06 - i * 0.01})`;
+      ctx.beginPath();
+      ctx.ellipse(offset, 60 + i * 25, 120, 18, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
     const tone = Math.max(0, 1 - game.unity / 120);
     const grassBase = `rgb(${Math.floor(42 + (1 - tone) * 42)}, ${Math.floor(92 + (1 - tone) * 65)}, ${Math.floor(
       48 + (1 - tone) * 32
@@ -2017,14 +2264,25 @@
 
         drawTile(sx, sy, color);
 
+        if (river) {
+          if ((tx + ty) % 2 === 0) {
+            ctx.fillStyle = "rgba(255,255,255,0.08)";
+            ctx.fillRect(sx + 4, sy + 10, TILE - 8, 2);
+          }
+        }
+
         if (!river) {
           if ((tx + ty) % 3 === 0 && !path && !asphalt) {
-            ctx.fillStyle = "rgba(255,255,255,0.035)";
+            ctx.fillStyle = "rgba(255,255,255,0.05)";
             ctx.fillRect(sx + 1, sy + 4, TILE - 2, 1);
           }
           if ((tx * 13 + ty * 7) % 11 === 0 && (path || asphalt)) {
-            ctx.fillStyle = "rgba(255,255,255,0.045)";
-            ctx.fillRect(sx + 2, sy + 2, TILE - 4, 2);
+            ctx.fillStyle = "rgba(255,255,255,0.08)";
+            ctx.fillRect(sx + 3, sy + 6, TILE - 6, 2);
+          }
+          if (inPark && (tx + ty * 3) % 5 === 0) {
+            ctx.fillStyle = "rgba(255,236,150,0.45)";
+            ctx.fillRect(sx + 6, sy + 6, 2, 2);
           }
         }
       }
@@ -2037,6 +2295,21 @@
   function drawSpriteWorld(name, wx, wy, size = 32) {
     const s = getSprite(name);
     ctx.drawImage(s, Math.floor(wx - game.camera.x), Math.floor(wy - game.camera.y), size, size);
+  }
+
+  function drawAnimatedSpriteWorld(name, wx, wy, size = 32, phase = 0, lift = 0, dir = "down") {
+    const s = getSprite(name);
+    const px = Math.floor(wx - game.camera.x + Math.sin(phase * 10) * 0.8);
+    const py = Math.floor(wy - game.camera.y + lift + Math.sin(phase * 8) * 1.2);
+    ctx.drawImage(s, px, py, size, size);
+
+    const frames = motionFrames[dir] || motionFrames.down;
+    const frame = frames[Math.abs(Math.floor(phase)) % frames.length];
+    const scale = size / 16;
+    for (const mod of frame) {
+      ctx.fillStyle = mod.color;
+      ctx.fillRect(px + mod.x * scale, py + mod.y * scale, Math.ceil(scale), Math.ceil(scale));
+    }
   }
 
   function drawBuildings(camX, camY) {
@@ -2061,6 +2334,18 @@
       ctx.strokeStyle = "#2a2520";
       ctx.lineWidth = 3;
       ctx.strokeRect(x, y, w, h);
+
+      const windowColor = game.unity > 50 ? "#f3e279" : "#a88f72";
+      for (let row = 0; row < Math.floor(b.h * 0.5); row += 1) {
+        for (let col = 0; col < Math.floor(b.w); col += 1) {
+          const wx = x + 6 + col * 18;
+          const wy = y + 12 + row * 22;
+          if (wx + 12 < x + w - 6 && wy + 14 < y + h - 18) {
+            ctx.fillStyle = windowColor;
+            ctx.fillRect(wx, wy, 12, 14);
+          }
+        }
+      }
 
       for (let i = 0; i < b.w; i += 2) {
         drawSpriteWorld("house", b.x * TILE + i * TILE + 8, b.y * TILE - 14, 36);
@@ -2135,17 +2420,72 @@
     }
 
     for (const npc of visibleNpcs()) {
-      drawSpriteWorld(npc.sprite, npc.x - 16, npc.y - 24, 38);
+      const phase = performance.now() * 0.002 + npc.x * 0.03;
+      const bob = Math.sin(phase * 3) * 2;
+      drawAnimatedSpriteWorld(npc.sprite, npc.x - 16, npc.y - 24 - bob, 38, phase, bob);
       ctx.fillStyle = "rgba(0,0,0,0.6)";
-      ctx.fillRect(npc.x - camX - 36, npc.y - camY - 38, 72, 14);
+      ctx.fillRect(npc.x - camX - 36, npc.y - camY - 38 - bob, 72, 14);
       ctx.fillStyle = "#f0f9ff";
       ctx.font = "8px 'Press Start 2P'";
-      ctx.fillText(npc.name, npc.x - camX - 32, npc.y - camY - 28);
+      ctx.fillText(npc.name, npc.x - camX - 32, npc.y - camY - 28 - bob);
+    }
+
+    drawCollectibles(camX, camY);
+  }
+
+  function drawCollectibles(camX, camY) {
+    for (const item of collectibles) {
+      if (item.collected) continue;
+      const x = item.x - camX;
+      const y = item.y - camY;
+      const pulse = 1 + Math.sin(performance.now() * 0.008 + item.x * 0.01) * 0.18;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.scale(pulse, pulse);
+      ctx.fillStyle = item.color;
+      ctx.beginPath();
+      ctx.moveTo(0, -6);
+      ctx.lineTo(2, -2);
+      ctx.lineTo(6, -2);
+      ctx.lineTo(3, 1);
+      ctx.lineTo(4, 6);
+      ctx.lineTo(0, 3);
+      ctx.lineTo(-4, 6);
+      ctx.lineTo(-3, 1);
+      ctx.lineTo(-6, -2);
+      ctx.lineTo(-2, -2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function checkCollectibles() {
+    if (game.scene !== "world") return;
+    for (const item of collectibles) {
+      if (item.collected) continue;
+      if (distance(player.x, player.y, item.x, item.y) < 24) {
+        item.collected = true;
+        game.tokensCollected += 1;
+        addUnity(3);
+        notify(`Collected ${item.label}! +3 Unity`);
+        playSfx("pickup");
+        triggerShake(4);
+      }
     }
   }
 
   function drawPlayer() {
-    drawSpriteWorld(player.avatar, player.x - 16, player.y - 24, 38);
+    const px = player.x - game.camera.x;
+    const py = player.y - game.camera.y;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath();
+    ctx.ellipse(px, py + 18, 16, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    const moving = keys.has("ArrowLeft") || keys.has("a") || keys.has("ArrowRight") || keys.has("d") || keys.has("ArrowUp") || keys.has("w") || keys.has("ArrowDown") || keys.has("s");
+    const lift = moving ? Math.sin(game.walkTime * 8) * 2 : Math.sin(game.walkTime * 4) * 0.5;
+    drawAnimatedSpriteWorld(player.avatar, player.x - 16, player.y - 24 - lift, 38, game.walkTime, lift, player.dir);
   }
 
   function drawObjectiveArrow() {
@@ -2357,9 +2697,21 @@
 
       const nx = player.x + mx * player.speed * dt;
       const ny = player.y + my * player.speed * dt;
+      const moving = mx !== 0 || my !== 0;
 
-      if (mx !== 0) player.dir = mx < 0 ? "left" : "right";
-      if (my !== 0) player.dir = my < 0 ? "up" : "down";
+      if (moving) {
+        player.dir = mx < 0 ? "left" : mx > 0 ? "right" : player.dir;
+        if (my !== 0) player.dir = my < 0 ? "up" : "down";
+        game.walkTime += dt * 10;
+        game.footstepTimer -= dt;
+        if (game.footstepTimer <= 0) {
+          playSfx("footstep");
+          game.footstepTimer = 0.18;
+        }
+      } else {
+        game.walkTime += dt * 2;
+        game.footstepTimer = 0;
+      }
 
       if (canMoveTo(nx, player.y)) player.x = nx;
       if (canMoveTo(player.x, ny)) player.y = ny;
@@ -2373,11 +2725,21 @@
       game.camera.y = 0;
     }
 
+    checkCollectibles();
+    updateEffects(dt);
     if (game.flashTimer > 0) game.flashTimer -= dt;
   }
 
   function render(dt) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const shakeAmount = game.screenShake;
+    if (shakeAmount > 0) {
+      const dx = (Math.random() - 0.5) * shakeAmount;
+      const dy = (Math.random() - 0.5) * shakeAmount;
+      ctx.save();
+      ctx.translate(dx, dy);
+      game.screenShake = Math.max(0, game.screenShake - dt * 12);
+    }
 
     if (game.scene === "title") {
       drawOpeningBackground();
@@ -2393,6 +2755,7 @@
     } else {
       drawWorld();
       drawPlayer();
+      drawEffects();
       drawObjectiveArrow();
     }
 
@@ -2487,6 +2850,10 @@
         ctx.fillText("Press SPACE to leave arcade", canvas.width / 2 - 158, canvas.height - 18);
       }
     }
+
+    if (shakeAmount > 0) {
+      ctx.restore();
+    }
   }
 
   document.addEventListener("keydown", (e) => {
@@ -2496,6 +2863,7 @@
     keys.add(key);
     if (game.scene === "title" && (key === " " || key === "Enter")) {
       e.preventDefault();
+      playSfx("confirm");
       startOpening();
       return;
     }
@@ -2517,6 +2885,12 @@
   if (ui.musicToggle) {
     ui.musicToggle.addEventListener("click", () => {
       toggleMusic();
+    });
+  }
+  if (ui.volumeRange) {
+    ui.volumeRange.addEventListener("input", (e) => {
+      const value = Number(e.target.value) / 100;
+      setVolume(value);
     });
   }
   canvas.addEventListener("click", () => {
