@@ -21,9 +21,15 @@
       <div id="hud-right">
         <div id="level-label">Opening</div>
         <div id="task-label">Watch the intro.</div>
-        <button id="music-toggle" type="button">Music: Off</button>
+        <div id="audio-controls">
+          <button id="music-toggle" type="button">Music: Off</button>
+          <label for="volume-range">Vol</label>
+          <input id="volume-range" type="range" min="0" max="100" value="72" />
+        </div>
       </div>
     </div>
+
+    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
     <div id="dialogue" class="panel hidden">
       <h3 id="dialogue-name"></h3>
